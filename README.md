@@ -60,3 +60,22 @@ CSDID after omitting each of 51 state clusters. The final outputs are:
 - `output/panel_c_results.tex`
 - `output/replicate_merit.log`
 
+## Verification status
+
+The copied `merit.dta` matches the source file byte for byte (SHA-256
+`1509b32bf680bf34783c5f27d58027e67931c85eead8f58c235c004b8887abdc`).
+The current installed CSDID and `csdidjack` commands reproduce all four
+published CSDID entries at four decimals. Direct execution of DiDInt.jl with
+the historical treated-state mapping also reproduces both DID-INT ATTs. With
+the current DiDInt.jl package and HC3 inference, its standard errors are
+`0.0103` (simple) and `0.0091` (cohort), versus the published `0.0102` and
+`0.0084`. The source of this difference remains unresolved; those two
+reported SEs have not been independently reproduced.
+
+On the machine used to prepare the repository, Stata's `jl` 2.0 bridge starts
+Julia successfully. The DO file explicitly loads the bundled Stata interface,
+which was missing from Julia's load path during batch testing. Even with that
+module loaded, `jl save df` returns `r(999)` for a two-row toy dataset in
+batch mode. This prevents an end-to-end run of `undidjl` or `didintjl` from
+being claimed as verified here. The DO file reports every computed value and
+flags deviations from the published table.

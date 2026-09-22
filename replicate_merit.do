@@ -39,6 +39,16 @@ foreach command in csdid csdidjack didintjl create_init_csv create_diff_df undid
     }
 }
 
+// Some jl 2.0 installations start Julia without adding the bundled Stata
+// interface to Julia's load path. Load it explicitly from Stata's ado path.
+findfile stataplugininterface.jl
+local bridge = subinstr("`r(fn)'", "\", "/", .)
+quietly jl: pushfirst!(LOAD_PATH, dirname(raw"`bridge'"))
+quietly jl: using stataplugininterface
+findfile jl.plugin
+local plugin = subinstr("`r(fn)'", "\", "/", .)
+quietly jl: stataplugininterface.setdllpath(raw"`plugin'")
+
 // Installation/update commands (run manually only when needed):
 // ssc install drdid, replace
 // ssc install csdid, replace
@@ -96,6 +106,20 @@ foreach s of local states {
     restore
 }
 
+// Fail with a useful message if the local Stata/Julia data bridge cannot
+// transfer even two observations. The 51 state CSVs remain available.
+preserve
+    keep in 1/2
+    capture noisily jl save merit_bridge_probe
+    local bridge_rc = _rc
+restore
+if `bridge_rc' {
+    display as error "Stata's jl bridge failed its two-observation transfer check."
+    display as error "See README.md; state CSVs are in $SILOS."
+    log close
+    exit `bridge_rc'
+}
+
 // -----------------------------------------------------------------------------
 // 2. UN-DID: initialize, estimate within each silo, then aggregate
 // -----------------------------------------------------------------------------
@@ -149,22 +173,31 @@ matrix results[2,3] = r(ATT)
 matrix results[2,4] = r(cv3se)
 
 // -----------------------------------------------------------------------------
-// 4. DID-INT with state-varying CCC and jackknife inference
+// 4. DID-INT with state-varying CCC and HC3 inference
 // -----------------------------------------------------------------------------
 
 use "$ROOT/merit.dta", clear
 
-didintjl, outcome(coll) state(state) time(year) gvar(gvar) ///
-    covariates("asian black male") ccc("state") agg("simple") ///
-    weighting("both") nperm(1) seed(1234)
-matrix results[1,5] = r(att)
-matrix results[1,6] = r(jkse)
+// Match the historical DID-INT replication input: state and year are strings,
+// and the treated-state/treatment-time pairing is supplied explicitly.
+keep coll state year asian black male
+tostring state year, replace format(%9.0f) force
 
-didintjl, outcome(coll) state(state) time(year) gvar(gvar) ///
-    covariates("asian black male") ccc("state") agg("cohort") ///
-    weighting("both") nperm(1) seed(1234)
+didintjl, outcome(coll) state(state) time(year) ///
+    treated_states("34 57 58 59 61 64 71 72 85 88") ///
+    treatment_times("2000 1998 1993 1997 1999 1996 1991 1998 1997 2000") ///
+    date_format("yyyy") covariates("asian black male") ccc("state") ///
+    agg("simple") weighting("both") hc(3) nperm(1) seed(1234)
+matrix results[1,5] = r(att)
+matrix results[1,6] = r(se)
+
+didintjl, outcome(coll) state(state) time(year) ///
+    treated_states("34 57 58 59 61 64 71 72 85 88") ///
+    treatment_times("2000 1998 1993 1997 1999 1996 1991 1998 1997 2000") ///
+    date_format("yyyy") covariates("asian black male") ccc("state") ///
+    agg("cohort") weighting("both") hc(3) nperm(1) seed(1234)
 matrix results[2,5] = r(att)
-matrix results[2,6] = r(jkse)
+matrix results[2,6] = r(se)
 
 // -----------------------------------------------------------------------------
 // 5. Display, save, and check Panel C
@@ -191,19 +224,19 @@ file write csv "group," %9.6f (results[2,1]) "," %9.6f (results[2,2]) "," ///
 file close csv
 
 file open tex using "$OUT/panel_c_results.tex", write text replace
-file write tex "\\begin{tabular}{lrrrrrr}" _n
-file write tex "\\hline" _n
-file write tex " & UN-DID & UN-DID & CSDID & CSDID & DID-INT & DID-INT \\\\" _n
-file write tex "Agg. & ATT & SE & ATT & SE & ATT & SE \\\\" _n
-file write tex "\\hline" _n
+file write tex "\begin{tabular}{lrrrrrr}" _n
+file write tex "\hline" _n
+file write tex " & UN-DID & UN-DID & CSDID & CSDID & DID-INT & DID-INT \\" _n
+file write tex "Agg. & ATT & SE & ATT & SE & ATT & SE \\" _n
+file write tex "\hline" _n
 file write tex "simple & " %6.4f (results[1,1]) " & " %6.4f (results[1,2]) " & " ///
     %6.4f (results[1,3]) " & " %6.4f (results[1,4]) " & " ///
-    %6.4f (results[1,5]) " & " %6.4f (results[1,6]) " \\\\" _n
+    %6.4f (results[1,5]) " & " %6.4f (results[1,6]) " \\" _n
 file write tex "group & " %6.4f (results[2,1]) " & " %6.4f (results[2,2]) " & " ///
     %6.4f (results[2,3]) " & " %6.4f (results[2,4]) " & " ///
-    %6.4f (results[2,5]) " & " %6.4f (results[2,6]) " \\\\" _n
-file write tex "\\hline" _n
-file write tex "\\end{tabular}" _n
+    %6.4f (results[2,5]) " & " %6.4f (results[2,6]) " \\" _n
+file write tex "\hline" _n
+file write tex "\end{tabular}" _n
 file close tex
 
 // A value passes when it rounds to the published four-decimal entry.
