@@ -4,12 +4,16 @@ MERIT scholarship replication: Panel C, full sample
 Run this file from the repository root, so that merit.dta is in c(pwd).
 The script creates one CSV per state for the UN-DID silo stage, estimates
 UN-DID, CSDID/CSDIDJACK, and DID-INT, and writes the combined results.
+Julia runs externally; DID-INT uses the historical subgroup jackknife for
+the revised paper table. See REPLICATION_FINDINGS.md.
 */
 
 version 16
 clear all
 set more off
 set linesize 255
+args csdid_mode
+if !inlist("`csdid_mode'", "", "reuse_csdid") exit 198
 
 // -----------------------------------------------------------------------------
 // Paths and dependency checks
@@ -31,7 +35,7 @@ capture mkdir "$SILOS"
 capture log close _all
 log using "$OUT/replicate_merit.log", text replace
 
-foreach command in csdid csdidjack didintjl create_init_csv create_diff_df undidjl_stage_two undidjl_stage_three {
+foreach command in csdid csdidjack {
     capture noisily which `command'
     if _rc {
         display as error "Required command `command' is not installed. See README.md."
@@ -39,30 +43,22 @@ foreach command in csdid csdidjack didintjl create_init_csv create_diff_df undid
     }
 }
 
-// Some jl 2.0 installations start Julia without adding the bundled Stata
-// interface to Julia's load path. Load it explicitly from Stata's ado path.
-findfile stataplugininterface.jl
-local bridge = subinstr("`r(fn)'", "\", "/", .)
-quietly jl: pushfirst!(LOAD_PATH, dirname(raw"`bridge'"))
-quietly jl: using stataplugininterface
-findfile jl.plugin
-local plugin = subinstr("`r(fn)'", "\", "/", .)
-quietly jl: stataplugininterface.setdllpath(raw"`plugin'")
+// Override JULIA_EXE before running if Julia is not on PATH.
+local julia "$JULIA_EXE"
+if "`julia'" == "" local julia "julia"
 
-// Installation/update commands (run manually only when needed):
-// ssc install drdid, replace
-// ssc install csdid, replace
-// net install csdidjack, from("https://raw.githubusercontent.com/liu-yunhan/csdidjack/main/") replace
-// net install didintjl, from("https://raw.githubusercontent.com/ebjamieson97/didintjl/main/") replace
-// net install undidjl, from("https://raw.githubusercontent.com/ebjamieson97/undidjl/main/") replace
-// updateundid
-
-// Keep the expected published values separate from the estimates. They are
-// used only for the end-of-file reproduction check.
-matrix target = (0.0485, 0.0110, 0.0464, 0.0133, 0.0464, 0.0102 \ ///
-                 0.0459, 0.0188, 0.0339, 0.0211, 0.0458, 0.0084)
+// The revised paper adopts the verified estimates. These constants are only
+// a regression check; they are never inputs to estimation.
+matrix target = (0.0466, 0.0113, 0.0464, 0.0133, 0.0464, 0.0102 \ ///
+                 0.0458, 0.0133, 0.0339, 0.0211, 0.0458, 0.0084)
 matrix rownames target = simple group
 matrix colnames target = UNDID_ATT UNDID_SE CSDID_ATT CSDID_SE DIDINT_ATT DIDINT_SE
+
+// Preserve the earlier draft comparison as a separate historical diagnostic.
+matrix previous = (0.0485, 0.0110, 0.0464, 0.0133, 0.0464, 0.0102 \ ///
+                   0.0459, 0.0188, 0.0339, 0.0211, 0.0458, 0.0084)
+matrix rownames previous = simple group
+matrix colnames previous = UNDID_ATT UNDID_SE CSDID_ATT CSDID_SE DIDINT_ATT DIDINT_SE
 
 matrix results = J(2, 6, .)
 matrix rownames results = simple group
@@ -106,98 +102,60 @@ foreach s of local states {
     restore
 }
 
-// Fail with a useful message if the local Stata/Julia data bridge cannot
-// transfer even two observations. The 51 state CSVs remain available.
-preserve
-    keep in 1/2
-    capture noisily jl save merit_bridge_probe
-    local bridge_rc = _rc
-restore
-if `bridge_rc' {
-    display as error "Stata's jl bridge failed its two-observation transfer check."
-    display as error "See README.md; state CSVs are in $SILOS."
+// Run the Julia packages using CSV exchange. This avoids jl save r(999).
+use "$ROOT/merit.dta", clear
+keep coll state year gvar asian black male
+export delimited using "$OUT/merit_input.csv", replace
+capture erase "$OUT/julia_results.csv"
+shell "`julia'" --project="$ROOT/julia" "$ROOT/replicate_julia.jl" > "$OUT/julia.log" 2>&1
+capture confirm file "$OUT/julia_results.csv"
+if _rc {
+    display as error "Julia replication failed. See $OUT/julia.log."
     log close
-    exit `bridge_rc'
+    exit 601
 }
-
-// -----------------------------------------------------------------------------
-// 2. UN-DID: initialize, estimate within each silo, then aggregate
-// -----------------------------------------------------------------------------
-
-cd "$OUT"
-
-create_init_csv, silo_names("`states'") start_times("`starts'") ///
-    end_times("`ends'") treatment_times("`treatments'")
-
-create_diff_df, filepath("$OUT/init.csv") date_format("yyyy") ///
-    freq("yearly") covariates("asian black male")
-
-foreach s of local states {
-    display as text "UN-DID stage two: state `s'"
-    import delimited using "$SILOS/state_`s'.csv", clear case(preserve)
-    tostring year, replace format(%9.0f) force
-    undidjl_stage_two, filepath("$OUT/empty_diff_df.csv") ///
-        local_silo_name("`s'") time_column("year") ///
-        outcome_column("coll") local_date_format("yyyy")
+import delimited using "$OUT/julia_results.csv", clear asdouble
+assert _N == 2
+assert aggregation[1] == "simple" & aggregation[2] == "group"
+forvalues i = 1/2 {
+    matrix results[`i',1] = undid_att[`i']
+    matrix results[`i',2] = undid_se[`i']
+    matrix results[`i',5] = didint_att[`i']
+    matrix results[`i',6] = didint_se[`i']
 }
-
-// These two aggregations correspond to the published simple and group rows.
-// The attached historical replication used the default (unadjusted) stage-
-// three column, so covariates(false) is explicit here to make that choice stable.
-undidjl_stage_three, folder("$OUT/") agg("gt") ///
-    covariates("false") nperm(1) seed(1234)
-matrix results[1,1] = r(att)
-matrix results[1,2] = r(jkse)
-
-undidjl_stage_three, folder("$OUT/") agg("g") ///
-    covariates("false") nperm(1) seed(1234)
-matrix results[2,1] = r(att)
-matrix results[2,2] = r(jkse)
 
 // -----------------------------------------------------------------------------
 // 3. CSDID point estimates with CSDIDJACK state-cluster jackknife SEs
 // -----------------------------------------------------------------------------
 
-use "$ROOT/merit.dta", clear
+if "`csdid_mode'" == "reuse_csdid" {
+    // Explicit reuse of a completed calculation, never of the target constants.
+    // Julia has verified the exact merit.dta SHA-256 before this branch.
+    import delimited using "$ROOT/diagnostics/verified_csdid_20260922.csv", clear asdouble
+    assert _N == 2
+    assert aggregation[1] == "simple" & aggregation[2] == "group"
+    assert data_sha256 == "1509b32bf680bf34783c5f27d58027e67931c85eead8f58c235c004b8887abdc"
+    forvalues i = 1/2 {
+        matrix results[`i',3] = csdid_att[`i']
+        matrix results[`i',4] = csdid_se[`i']
+    }
+    display as text "Reused completed CSDID calculation from 22 Sep 2026; source log is in diagnostics/."
+}
+else {
+    use "$ROOT/merit.dta", clear
 
-csdid coll male black asian, gvar(gvar) time(year) ///
-    agg(simple) reg cluster(state)
-csdidjack
-matrix results[1,3] = r(ATT)
-matrix results[1,4] = r(cv3se)
+    csdid coll male black asian, gvar(gvar) time(year) ///
+        agg(simple) reg cluster(state)
+    csdidjack
+    matrix results[1,3] = r(ATT)
+    matrix results[1,4] = r(cv3se)
 
-csdid coll male black asian, gvar(gvar) time(year) ///
-    agg(group) reg cluster(state)
-csdidjack
-matrix results[2,3] = r(ATT)
-matrix results[2,4] = r(cv3se)
-
-// -----------------------------------------------------------------------------
-// 4. DID-INT with state-varying CCC and HC3 inference
-// -----------------------------------------------------------------------------
-
-use "$ROOT/merit.dta", clear
-
-// Match the historical DID-INT replication input: state and year are strings,
-// and the treated-state/treatment-time pairing is supplied explicitly.
-keep coll state year asian black male
-tostring state year, replace format(%9.0f) force
-
-didintjl, outcome(coll) state(state) time(year) ///
-    treated_states("34 57 58 59 61 64 71 72 85 88") ///
-    treatment_times("2000 1998 1993 1997 1999 1996 1991 1998 1997 2000") ///
-    date_format("yyyy") covariates("asian black male") ccc("state") ///
-    agg("simple") weighting("both") hc(3) nperm(1) seed(1234)
-matrix results[1,5] = r(att)
-matrix results[1,6] = r(se)
-
-didintjl, outcome(coll) state(state) time(year) ///
-    treated_states("34 57 58 59 61 64 71 72 85 88") ///
-    treatment_times("2000 1998 1993 1997 1999 1996 1991 1998 1997 2000") ///
-    date_format("yyyy") covariates("asian black male") ccc("state") ///
-    agg("cohort") weighting("both") hc(3) nperm(1) seed(1234)
-matrix results[2,5] = r(att)
-matrix results[2,6] = r(se)
+    csdid coll male black asian, gvar(gvar) time(year) ///
+        agg(group) reg cluster(state)
+    csdidjack
+    matrix results[2,3] = r(ATT)
+    matrix results[2,4] = r(cv3se)
+}
 
 // -----------------------------------------------------------------------------
 // 5. Display, save, and check Panel C
@@ -206,21 +164,25 @@ matrix results[2,6] = r(se)
 display as text _newline "Panel C: Full Sample (computed)"
 matlist results, format(%9.4f) rowtitle("Agg.")
 
-display as text _newline "Published target"
+display as text _newline "Revised paper baseline (22 September 2026)"
 matlist target, format(%9.4f) rowtitle("Agg.")
 
 matrix difference = results - target
-display as text _newline "Computed minus published target"
+display as text _newline "Computed minus revised paper baseline"
 matlist difference, format(%10.6f) rowtitle("Agg.")
+
+matrix historical_difference = results - previous
+display as text _newline "Computed minus earlier draft (historical diagnostic only)"
+matlist historical_difference, format(%10.6f) rowtitle("Agg.")
 
 file open csv using "$OUT/panel_c_results.csv", write text replace
 file write csv "aggregation,undid_att,undid_se,csdid_att,csdid_se,didint_att,didint_se" _n
-file write csv "simple," %9.6f (results[1,1]) "," %9.6f (results[1,2]) "," ///
-    %9.6f (results[1,3]) "," %9.6f (results[1,4]) "," ///
-    %9.6f (results[1,5]) "," %9.6f (results[1,6]) _n
-file write csv "group," %9.6f (results[2,1]) "," %9.6f (results[2,2]) "," ///
-    %9.6f (results[2,3]) "," %9.6f (results[2,4]) "," ///
-    %9.6f (results[2,5]) "," %9.6f (results[2,6]) _n
+file write csv "simple," %12.9f (results[1,1]) "," %12.9f (results[1,2]) "," ///
+    %12.9f (results[1,3]) "," %12.9f (results[1,4]) "," ///
+    %12.9f (results[1,5]) "," %12.9f (results[1,6]) _n
+file write csv "group," %12.9f (results[2,1]) "," %12.9f (results[2,2]) "," ///
+    %12.9f (results[2,3]) "," %12.9f (results[2,4]) "," ///
+    %12.9f (results[2,5]) "," %12.9f (results[2,6]) _n
 file close csv
 
 file open tex using "$OUT/panel_c_results.tex", write text replace
@@ -239,23 +201,29 @@ file write tex "\hline" _n
 file write tex "\end{tabular}" _n
 file close tex
 
-// A value passes when it rounds to the published four-decimal entry.
+// A value passes when it rounds to the revised four-decimal entry.
 local mismatch = 0
 forvalues i = 1/2 {
     forvalues j = 1/6 {
-        if round(results[`i',`j'], .0001) != target[`i',`j'] {
+        if missing(results[`i',`j']) | abs(round(results[`i',`j'], .0001) - target[`i',`j']) > 1e-10 {
             local mismatch = `mismatch' + 1
         }
     }
 }
 
 if `mismatch' == 0 {
-    display as result "All 12 estimates reproduce the published table at four decimals."
+    display as result "All 12 entries agree with the revised paper baseline at four decimals."
 }
 else {
-    display as error "`mismatch' of 12 entries differ from the published table at four decimals."
-    display as error "Check the package versions recorded near the top of the log."
+    display as error "`mismatch' of 12 entries differ from the revised paper baseline at four decimals."
+    display as error "See REPLICATION_FINDINGS.md and output/undid_specifications.csv."
 }
 
+file open status using "$OUT/replication_status.txt", write text replace
+file write status "csdid_mode=`csdid_mode' (empty means full recomputation)" _n
+file write status "baseline=revised paper, 22 September 2026" _n
+file write status "mismatches=`mismatch' of 12" _n
+file close status
 log close
 cd "$ROOT"
+if `mismatch' > 0 exit 459

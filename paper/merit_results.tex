@@ -1,0 +1,56 @@
+Lastly, we estimate average treatment effects using data from all groups and all necessary years per group. Panel C of Table \ref{tab:merit} reports results from UN-DID, CSDID, and DID-INT. For UN-DID, we treat each state's data as siloed and use differences without covariate adjustment. CSDID implements the procedure of \citet{callaway2021difference} and includes the indicators for male, black, and Asian individuals. DID-INT includes the same covariates and allows their coefficients to vary across states. For each method, we report a simple aggregation of cohort-time treatment effects and a group aggregation. The UN-DID and DID-INT calculations use sample-size weighting at both the difference and aggregation stages. Thus, these comparisons use different covariate specifications.
+
+The reported standard errors use different jackknife procedures. For CSDID, we use the state-cluster jackknife implemented in \texttt{csdidjack}, following \citet{karim2026improvedinferencecsdidusing}. For UN-DID and DID-INT, we report a final-stage delete-one-subgroup jackknife: each deletion removes one of the 33 cohort-time estimates under simple aggregation, or one of the seven cohort estimates under group aggregation, and renormalizes the remaining weights. These subgroup jackknife standard errors do not implement state-level clustering, so differences in the reported standard errors reflect differences in inference procedures as well as estimation methods.
+
+The simple aggregate ATTs are close: 0.0466 for UN-DID, 0.0464 for CSDID, and 0.0464 for DID-INT. Their reported standard errors are 0.0113, 0.0133, and 0.0102, respectively. Under group aggregation, the UN-DID and DID-INT ATTs both round to 0.0458, with standard errors of 0.0133 and 0.0084. The CSDID ATT is smaller, at 0.0339, with a state-cluster jackknife standard error of 0.0211; it is not statistically significant at the 10\% level using a two-sided normal approximation.
+
+We also investigate the sensitivity of DID-INT to the remaining CCC assumptions in Appendix \ref{sec:merit_ccc}. The reported ATTs range from 0.0412 when allowing for time-varying coefficients to 0.0511 when allowing for two-way varying coefficients.
+
+\begin{table}
+\renewcommand{\arraystretch}{1.4}
+\caption{Estimates from Merit Example}
+\begin{tabular}{lclrrcc}
+ \multicolumn{3}{l}{Panel A: Without Covariates}   & & & &        \\
+\hline
+Treated & Control & Year &     &    &  &  \\
+State & State & Treated & DID    & UN-DID   & DID SE & UN-DID SE \\
+\hline
+71      & 73      & 1991 & $-0$.0242 & $-0$.0242 & 0.0755  & 0.0754  \\
+58      & 46      & 1993 & 0.1386  & 0.1386  & 0.0590  & 0.0590  \\
+64      & 54      & 1996 & 0.0182  & 0.0182  & 0.0619  & 0.0619  \\
+59      & 23      & 1997 & $-0$.0073 & $-0$.0073 & 0.0362  & 0.0362  \\
+85      & 86      & 1997 & 0.1318  & 0.1318  & 0.0601  & 0.0601  \\
+57      & 32      & 1998 & $-0$.0291 & $-0$.0291 & 0.0747  & 0.0747  \\
+72      & 55      & 1998 & $-0$.0645 & $-0$.0645 & 0.0658  & 0.0658  \\
+61      & 62      & 1999 & 0.0335  & 0.0335  & 0.0816  & 0.0816  \\
+34      & 33      & 2000 & $-0$.0305 & $-0$.0305 & 0.0666  & 0.0666  \\
+88      & 11      & 2000 & 0.1595  & 0.1595  & 0.1337  & 0.1337  \\
+\hline
+ \multicolumn{3}{l}{Panel B: With Covariates}   & & & &        \\
+ \hline
+ Treated & Control & Year &     &    &  &  \\
+State & State & Treated & DID    & UN-DID   & DID SE & UN-DID SE \\
+\hline
+71      & 73      & 1991 & $-0$.0141 & $-0$.0137 & 0.0750  & 0.0871  \\
+58      & 46      & 1993 & 0.1501  & 0.1523  & 0.0582  & 0.0734  \\
+64      & 54      & 1996 & 0.0077  & 0.0028  & 0.0614  & 0.0820  \\
+59      & 23      & 1997 & $-0$.0179 & $-0$.0139 & 0.0360  & 0.0441  \\
+85      & 86      & 1997 & 0.1309  & 0.1277  & 0.0597  & 0.0726  \\
+57      & 32      & 1998 & $-0$.0480 & $-0$.0417 & 0.0733  & 0.0876  \\
+72      & 55      & 1998 & $-0$.0704 & $-0$.0685 & 0.0655  & 0.0793  \\
+61      & 62      & 1999 & 0.0370  & 0.0314  & 0.0806  & 0.0918  \\
+34      & 33      & 2000 & $-0$.0282 & $-0$.0303 & 0.0655  & 0.0709  \\
+88      & 11      & 2000 & 0.1811  & 0.1819  & 0.1335  & 0.1428 \\
+\hline
+\multicolumn{3}{l}{Panel C: Full Sample} & & & & \\
+\hline
+ & UN-DID & UN-DID & CSDID & CSDID & DID-INT & DID-INT \\
+Agg. & ATT & SE & ATT & SE & ATT & SE \\
+simple & 0.0466 & 0.0113 & 0.0464 & 0.0133 & 0.0464 & 0.0102 \\
+group  & 0.0458 & 0.0133 & 0.0339 & 0.0211 & 0.0458 & 0.0084 \\
+
+ \hline
+ \hline
+\end{tabular}
+\label{tab:merit}
+\end{table}

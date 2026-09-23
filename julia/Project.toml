@@ -1,0 +1,5 @@
+[deps]
+CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DiDInt = "a755adf4-2e2b-446b-93e8-5a1a900eb7ed"
+Undid = "b4918ae7-7c73-4176-80be-8405760cf2ee"
