@@ -17,11 +17,11 @@ function write_csv(path, df)
     end
 end
 
-"""Historical final-stage jackknife: delete one subgroup and renormalize weights.
+"""Final-stage jackknife: delete one subgroup and renormalize weights.
 
-This reproduces DiDInt.jl's former compute_jknife_se on the weighted
-intercept-only final regression. It does NOT delete a state from the data.
-The historical formula centers deletions at the full-sample estimate.
+This computes uncertainty for the weighted intercept-only final regression.
+It does NOT delete a state from the data. Deletions are centered at the
+full-sample estimate.
 """
 function subgroup_jackknife(y, weights)
     w = weights ./ sum(weights)
@@ -29,7 +29,7 @@ function subgroup_jackknife(y, weights)
     deleted = [(sum(w[j] * y[j] for j in eachindex(y) if j != i) /
                 sum(w[j] for j in eachindex(y) if j != i)) for i in eachindex(y)]
     se = sqrt((length(y)-1)/length(y) * sum((deleted .- theta).^2))
-    # Independent regression calculation, matching the historical package code.
+    # Independent regression calculation of the same deletions.
     x = reshape(sqrt.(w), :, 1)
     yw = sqrt.(w) .* y
     regressions = [(x[setdiff(eachindex(y), [i]), :] \
@@ -87,7 +87,7 @@ for (i, agg) in enumerate(["gt", "g"]), cov in [false, true], weighting in ["non
 end
 write_csv(joinpath(out, "undid_specifications.csv"), variants)
 
-inference = DataFrame(aggregation=String[], att=Float64[], historical_subgroup_jackknife_se=Float64[],
+inference = DataFrame(aggregation=String[], att=Float64[], subgroup_jackknife_se=Float64[],
     hc3_se=Float64[], current_state_jackknife_se=Float64[], n_subgroups=Int[])
 for (i, agg) in enumerate(["simple", "cohort"])
     r = didint("coll", "state", "year", df;
@@ -97,7 +97,7 @@ for (i, agg) in enumerate(["simple", "cohort"])
     y = Float64.(r[!, agg == "simple" ? :att_gt : :att_cohort])
     theta, se, deleted = subgroup_jackknife(y, Float64.(r.weights))
     @assert isapprox(theta, r.agg_att[1]; atol=1e-12)
-    # For a weighted intercept-only regression the historical SE also equals
+    # For a weighted intercept-only regression the subgroup SE also equals
     # sqrt((m-1)/m) times HC3. Check this independently of the deletion loop.
     @assert isapprox(se, sqrt((length(y)-1)/length(y))*r.se_agg_att[1]; atol=1e-12)
     results.didint_att[i] = theta

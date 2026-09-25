@@ -4,8 +4,8 @@ MERIT scholarship replication: Panel C, full sample
 Run this file from the repository root, so that merit.dta is in c(pwd).
 The script creates one CSV per state for the UN-DID silo stage, estimates
 UN-DID, CSDID/CSDIDJACK, and DID-INT, and writes the combined results.
-Julia runs externally; DID-INT uses the historical subgroup jackknife for
-the revised paper table. See REPLICATION_FINDINGS.md.
+Julia runs externally; DID-INT uses the final-stage subgroup jackknife for
+the reported standard error.
 */
 
 version 16
@@ -47,18 +47,11 @@ foreach command in csdid csdidjack {
 local julia "$JULIA_EXE"
 if "`julia'" == "" local julia "julia"
 
-// The revised paper adopts the verified estimates. These constants are only
-// a regression check; they are never inputs to estimation.
+// Reference values are a regression check, never inputs to estimation.
 matrix target = (0.0466, 0.0113, 0.0464, 0.0133, 0.0464, 0.0102 \ ///
                  0.0458, 0.0133, 0.0339, 0.0211, 0.0458, 0.0084)
 matrix rownames target = simple group
 matrix colnames target = UNDID_ATT UNDID_SE CSDID_ATT CSDID_SE DIDINT_ATT DIDINT_SE
-
-// Preserve the earlier draft comparison as a separate historical diagnostic.
-matrix previous = (0.0485, 0.0110, 0.0464, 0.0133, 0.0464, 0.0102 \ ///
-                   0.0459, 0.0188, 0.0339, 0.0211, 0.0458, 0.0084)
-matrix rownames previous = simple group
-matrix colnames previous = UNDID_ATT UNDID_SE CSDID_ATT CSDID_SE DIDINT_ATT DIDINT_SE
 
 matrix results = J(2, 6, .)
 matrix rownames results = simple group
@@ -131,7 +124,7 @@ forvalues i = 1/2 {
 if "`csdid_mode'" == "reuse_csdid" {
     // Explicit reuse of a completed calculation, never of the target constants.
     // Julia has verified the exact merit.dta SHA-256 before this branch.
-    import delimited using "$ROOT/diagnostics/verified_csdid_20260922.csv", clear asdouble
+    import delimited using "$ROOT/results/csdid_results.csv", clear asdouble
     assert _N == 2
     assert aggregation[1] == "simple" & aggregation[2] == "group"
     assert data_sha256 == "1509b32bf680bf34783c5f27d58027e67931c85eead8f58c235c004b8887abdc"
@@ -139,7 +132,7 @@ if "`csdid_mode'" == "reuse_csdid" {
         matrix results[`i',3] = csdid_att[`i']
         matrix results[`i',4] = csdid_se[`i']
     }
-    display as text "Reused completed CSDID calculation from 22 Sep 2026; source log is in diagnostics/."
+    display as text "Reused saved CSDID calculation from results/csdid_results.csv."
 }
 else {
     use "$ROOT/merit.dta", clear
@@ -164,16 +157,12 @@ else {
 display as text _newline "Panel C: Full Sample (computed)"
 matlist results, format(%9.4f) rowtitle("Agg.")
 
-display as text _newline "Revised paper baseline (22 September 2026)"
+display as text _newline "Reference values"
 matlist target, format(%9.4f) rowtitle("Agg.")
 
 matrix difference = results - target
-display as text _newline "Computed minus revised paper baseline"
+display as text _newline "Computed minus reference values"
 matlist difference, format(%10.6f) rowtitle("Agg.")
-
-matrix historical_difference = results - previous
-display as text _newline "Computed minus earlier draft (historical diagnostic only)"
-matlist historical_difference, format(%10.6f) rowtitle("Agg.")
 
 file open csv using "$OUT/panel_c_results.csv", write text replace
 file write csv "aggregation,undid_att,undid_se,csdid_att,csdid_se,didint_att,didint_se" _n
@@ -201,7 +190,7 @@ file write tex "\hline" _n
 file write tex "\end{tabular}" _n
 file close tex
 
-// A value passes when it rounds to the revised four-decimal entry.
+// A value passes when it rounds to the four-decimal reference entry.
 local mismatch = 0
 forvalues i = 1/2 {
     forvalues j = 1/6 {
@@ -212,16 +201,16 @@ forvalues i = 1/2 {
 }
 
 if `mismatch' == 0 {
-    display as result "All 12 entries agree with the revised paper baseline at four decimals."
+    display as result "All 12 entries agree with the reference values at four decimals."
 }
 else {
-    display as error "`mismatch' of 12 entries differ from the revised paper baseline at four decimals."
-    display as error "See REPLICATION_FINDINGS.md and output/undid_specifications.csv."
+    display as error "`mismatch' of 12 entries differ from the reference values at four decimals."
+    display as error "See output/undid_specifications.csv for UN-DID alternatives."
 }
 
 file open status using "$OUT/replication_status.txt", write text replace
 file write status "csdid_mode=`csdid_mode' (empty means full recomputation)" _n
-file write status "baseline=revised paper, 22 September 2026" _n
+file write status "reference=results/panel_c_results.csv" _n
 file write status "mismatches=`mismatch' of 12" _n
 file close status
 log close

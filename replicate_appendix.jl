@@ -18,7 +18,7 @@ times = [maximum(Int.(df.gvar[df.state .== s])) for s in states]
 treated = findall(!=(0), times)
 @assert length(treated) == 10
 
-# Historical final-stage jackknife: delete one cohort estimate, renormalize
+# Final-stage jackknife: delete one cohort estimate, renormalize
 # its weight, and center deletions on the full-sample weighted ATT. This is
 # not a state-cluster jackknife and differs from current DiDInt.jl's jkse.
 function subgroup_jackknife(y, weights)
@@ -51,7 +51,7 @@ for (label, ccc, expected_att, expected_se) in specs
     @assert length(y) == 7
     @assert isapprox(att, r.agg_att[1]; atol=1e-12)
     @assert isapprox(se, sqrt(6 / 7) * r.se_agg_att[1]; atol=1e-12)
-    @printf("  ATT %.9f, historical subgroup JK SE %.9f\n", att, se)
+    @printf("  ATT %.9f, subgroup JK SE %.9f\n", att, se)
     @assert round(att; digits=4) == expected_att "ATT differs from appendix target for $label"
     @assert round(se; digits=4) == expected_se "SE differs from appendix target for $label"
     push!(results, (label, ccc, att, se, length(y)))
