@@ -1,0 +1,6 @@
+ccc_variation,ccc_option,aggregate_att,jackknife_se,n_cohorts
+Homogeneous,hom,0.044984613,0.009195456,7
+Time,time,0.041208787,0.010139825,7
+Region,state,0.045817214,0.008394653,7
+Two One-Way,add,0.042016935,0.009118357,7
+Two Way,int,0.051105888,0.020944613,7

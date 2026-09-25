@@ -140,6 +140,31 @@ checks agreement with the committed results CSV and reports the earlier draft
 comparison separately. It writes `output/replication_audit.json` and
 `output/historical_undid_component_comparison.csv`.
 
+## Appendix: CCC variations
+
+Run the five DID-INT specifications in the appendix independently of Panel C:
+
+```stata
+do replicate_appendix.do
+```
+
+This uses the same pinned Julia environment and raw `merit.dta`. It exports a
+temporary CSV from Stata, then calls `replicate_appendix.jl` through an external
+Julia process; the Stata `didintjl` wrapper is not needed. If Julia is not on
+PATH, set `global JULIA_EXE "C:/path/to/julia.exe"` first. The script generates
+`output/appendix_ccc_results.csv`, `output/appendix_ccc_table.tex`, and logs.
+The verified numerical snapshot is in [results/appendix_ccc_results.csv](results/appendix_ccc_results.csv),
+and the four-decimal LaTeX table is in [paper/appendix_ccc_table.tex](paper/appendix_ccc_table.tex).
+
+All five models use cohort aggregation, `both` weighting, and the covariates
+`asian`, `male`, and `black`. The table's “Region” setting is DiDInt.jl's
+`ccc="state"`; the other settings are `hom`, `time`, `add` (Two One-Way), and
+`int` (Two Way). The displayed SE is the historical final-stage
+delete-one-cohort jackknife, not the current package's state-deletion
+jackknife and not a state-cluster SE. The script checks every ATT and SE
+against the supplied appendix table at four decimals before writing results.
+Randomization-inference p-values are not part of this check.
+
 ## Data provenance and scope
 
 `merit.dta` contains 42,161 observations, 51 states including DC, and years
@@ -149,5 +174,5 @@ comparison separately. It writes `output/replication_audit.json` and
 `diagnostics/historical/` contains copies of two old UN-DID summary CSVs from
 `Unpool-RA/examples/merit`, retained as evidence. They are not inputs to the
 replication and are not treated as verified estimates from the raw data.
-This revision covers Panel C and its accompanying discussion; it does not
-re-estimate Panels A and B or the appendix's other CCC specifications.
+The repository covers Panel C and the five appendix CCC specifications above;
+it does not re-estimate Panels A and B.
